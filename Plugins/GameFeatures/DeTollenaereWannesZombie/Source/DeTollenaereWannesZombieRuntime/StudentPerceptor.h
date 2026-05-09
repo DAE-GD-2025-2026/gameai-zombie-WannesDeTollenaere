@@ -21,6 +21,17 @@ public:
 	
 	virtual void BeginPlay() override;
 
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 	UFUNCTION()
 	virtual void OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Perception")
+	float SafetyDistance = 1500.0f;
+
+private:
+	UPROPERTY()
+	class UBlackboardComponent* CachedBlackboard = nullptr;
+
+	UBlackboardComponent* GetBlackboard();
 };

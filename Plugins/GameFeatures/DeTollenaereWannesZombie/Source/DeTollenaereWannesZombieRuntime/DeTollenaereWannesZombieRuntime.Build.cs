@@ -39,6 +39,9 @@ public class DeTollenaereWannesZombieRuntime : ModuleRules
 				"Slate",
 				"SlateCore",
                 "AIModule",
+                "NavigationSystem",
+                "GameplayTasks",
+                "GameAI_Zombie"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
