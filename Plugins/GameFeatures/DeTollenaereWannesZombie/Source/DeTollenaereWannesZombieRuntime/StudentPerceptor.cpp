@@ -11,6 +11,7 @@
 const FName BBK_HasZombieInSight = FName("HasZombieInSight");
 const FName BBK_ClosestZombie = FName("ClosestZombie");
 const FName BBK_TargetHouse = FName("TargetHouse");
+const FName BBK_TargetItem = FName("TargetItem");
 
 UStudentPerceptor::UStudentPerceptor()
 {
@@ -75,8 +76,14 @@ void UStudentPerceptor::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 		Blackboard->SetValueAsObject(BBK_ClosestZombie, Zombie);
 		GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Zombie spotted!"));
 	}
+	else if (ABaseItem* Item = Cast<ABaseItem>(Actor))
+	{
+		Blackboard->SetValueAsObject(BBK_TargetItem, Item);
+		GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT("Item spotted!"));
+	}
 	else if (AHouse* House = Cast<AHouse>(Actor))
 	{
 		Blackboard->SetValueAsObject(BBK_TargetHouse, House);
+		GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan, TEXT("House spotted!"));
 	}
 }
