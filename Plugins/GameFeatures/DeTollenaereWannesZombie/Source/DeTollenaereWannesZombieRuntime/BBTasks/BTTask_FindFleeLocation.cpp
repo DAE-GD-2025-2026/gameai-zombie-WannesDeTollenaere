@@ -27,22 +27,36 @@ EBTNodeResult::Type UBTTask_FindFleeLocation::ExecuteTask(UBehaviorTreeComponent
 	FVector PredictedThreatLocation = CurrentThreatLocation + (ThreatVelocity * LookAheadTime);
 
 	FVector RunDirection = AIPawn->GetActorLocation() - PredictedThreatLocation;
-
 	RunDirection.Z = 0.0f;
 	RunDirection.Normalize();
-
-	FVector TargetFleeLocation = AIPawn->GetActorLocation() + (RunDirection * FleeDistance);
 
 	UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
 	if (!NavSys) return EBTNodeResult::Failed;
 
-	FNavLocation SafeLocation;
+	const float AngleStepDeg = 30.0f;
+	const int32 MaxAttempts = 12;
+	const FVector NavExtent(500.0f, 500.0f, 250.0f);
 
-	if (NavSys->ProjectPointToNavigation(TargetFleeLocation, SafeLocation, FVector::ZeroVector))
+	FNavLocation SafeLocation;
+	bool bFound = false;
+
+	for (int32 i = 0; i <= MaxAttempts && !bFound; ++i)
 	{
-		Blackboard->SetValueAsVector(GetSelectedBlackboardKey(), SafeLocation.Location);
-		return EBTNodeResult::Succeeded;
+		const float Sign = (i % 2 == 0) ? 1.0f : -1.0f;
+		const float AngleDeg = Sign * (i / 2) * AngleStepDeg;
+		const FVector AttemptDir = RunDirection.RotateAngleAxis(AngleDeg, FVector::UpVector);
+		const FVector AttemptTarget = AIPawn->GetActorLocation() + AttemptDir * FleeDistance;
+
+		if (NavSys->ProjectPointToNavigation(AttemptTarget, SafeLocation, NavExtent))
+			bFound = true;
 	}
 
-	return EBTNodeResult::Failed;
+	if (!bFound)
+	{
+		if (!NavSys->GetRandomReachablePointInRadius(AIPawn->GetActorLocation(), FleeDistance, SafeLocation))
+			return EBTNodeResult::Failed;
+	}
+
+	Blackboard->SetValueAsVector(GetSelectedBlackboardKey(), SafeLocation.Location);
+	return EBTNodeResult::Succeeded;
 }

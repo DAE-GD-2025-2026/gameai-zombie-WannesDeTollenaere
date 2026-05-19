@@ -27,26 +27,31 @@ EBTNodeResult::Type UBTTask_AttackZombie::ExecuteTask(UBehaviorTreeComponent& Ow
 	AActor* ZombieTarget = Cast<AActor>(Blackboard->GetValueAsObject(GetSelectedBlackboardKey()));
 	if (!ZombieTarget) return EBTNodeResult::Failed;
 
-	// Scan inventory to find usable weapon with ammo
+	const float DistToTarget = FVector::Dist(AIPawn->GetActorLocation(), ZombieTarget->GetActorLocation());
+	if (DistToTarget > MaxAttackRange)
+		return EBTNodeResult::Failed;
+
+	// Pick the weapon with the most damage that still has ammo
 	int32 SelectedWeaponSlot = -1;
+	int32 BestDamage = -1;
+	AWeapon* SelectedWeapon = nullptr;
 	const TArray<ABaseItem*>& Items = Inventory->GetInventory();
 
 	for (int32 i = 0; i < Items.Num(); ++i)
 	{
 		if (AWeapon* Weapon = Cast<AWeapon>(Items[i]))
 		{
-			if (Weapon->GetValue() > 0)
+			if (Weapon->GetValue() > 0 && Weapon->GetDamage() > BestDamage)
 			{
+				BestDamage = Weapon->GetDamage();
 				SelectedWeaponSlot = i;
-				break; 
+				SelectedWeapon = Weapon;
 			}
 		}
 	}
 
 	if (SelectedWeaponSlot == -1)
-	{
 		return EBTNodeResult::Failed;
-	}
 
 	// Aim
 	FVector LookDirection = ZombieTarget->GetActorLocation() - AIPawn->GetActorLocation();
@@ -63,6 +68,13 @@ EBTNodeResult::Type UBTTask_AttackZombie::ExecuteTask(UBehaviorTreeComponent& Ow
 	if (Inventory->UseItem(SelectedWeaponSlot))
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Orange, TEXT("Firing Weapon!"));
+
+		if (SelectedWeapon->GetValue() <= 0)
+		{
+			Inventory->RemoveItem(SelectedWeaponSlot);
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, TEXT("Dropped empty weapon!"));
+		}
+
 		return EBTNodeResult::Succeeded;
 	}
 

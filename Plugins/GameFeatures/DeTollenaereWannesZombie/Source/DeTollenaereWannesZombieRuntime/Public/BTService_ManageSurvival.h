@@ -16,9 +16,15 @@ protected:
 	virtual void TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds) override;
 
 public:
+	// Use a medkit when health drops below this fraction
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Survival")
-	float HealthThreshold = 0.5f; 
+	float HealthThreshold = 0.6f;
 
+	// Use food when stamina drops below this fraction
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Survival")
-	float StaminaThreshold = 0.3f;
+	float StaminaThreshold = 0.25f;
+
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Survival")
+	float WalkStaminaThreshold = 0.5f;
 };

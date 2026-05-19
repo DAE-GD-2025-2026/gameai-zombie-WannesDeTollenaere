@@ -12,6 +12,9 @@ class DETOLLENAEREWANNESZOMBIERUNTIME_API UBTTask_AttackZombie : public UBTTask_
 public:
 	UBTTask_AttackZombie();
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI|Combat")
+	float MaxAttackRange = 900.0f;
+
 protected:
 	virtual EBTNodeResult::Type ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) override;
 };
