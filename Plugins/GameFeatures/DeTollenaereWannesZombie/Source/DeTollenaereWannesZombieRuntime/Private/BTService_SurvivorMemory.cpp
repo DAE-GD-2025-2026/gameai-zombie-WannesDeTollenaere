@@ -7,13 +7,7 @@
 #include "Items/Weapon.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/FloatingPawnMovement.h"
-
-static const FName BBK_HasZombieInSight("HasZombieInSight");
-static const FName BBK_ClosestZombie   ("ClosestZombie");
-static const FName BBK_TargetItem      ("TargetItem");
-static const FName BBK_TargetHouse     ("TargetHouse");
-static const FName BBK_HasWeapon       ("HasWeapon");
-static const FName BBK_ZombieIsFaster  ("ZombieIsFaster");
+#include "SurvivorBlackboardKeys.h"
 
 float UBTService_SurvivorMemory::GetMaxSpeed(AActor* Actor)
 {
@@ -25,14 +19,14 @@ float UBTService_SurvivorMemory::GetMaxSpeed(AActor* Actor)
 	if (UCharacterMovementComponent* CMC = Actor->FindComponentByClass<UCharacterMovementComponent>())
 		return CMC->MaxWalkSpeed;
 
-	return Actor->GetVelocity().Size(); // safe fallback
+	return Actor->GetVelocity().Size();
 }
 
 float UBTService_SurvivorMemory::ScoreHouseForVisit(const FHouseMemory& HMem, APawn* Pawn) const
 {
 	if (!HMem.IsValidHouse()) return -1.f;
 
-	// Unscouted houses are always worth visiting
+	// unscouted houses always visit
 	float Score = HMem.bScouted ? 0.f : UnscoutedHouseBonus;
 
 	for (ABaseItem* Item : HMem.KnownItems)
@@ -41,7 +35,7 @@ float UBTService_SurvivorMemory::ScoreHouseForVisit(const FHouseMemory& HMem, AP
 		Score += UStudentPerceptor::ScoreItem(Item, Pawn);
 	}
 
-	if (Score <= 0.f) return 0.f; // scouted + no useful items 
+	if (Score <= 0.f) return 0.f; 
 
 	// prefer closer houses 
 	const float Dist = FVector::Dist2D(Pawn->GetActorLocation(), HMem.GetLocation());
@@ -159,7 +153,8 @@ void UBTService_SurvivorMemory::TickNode(UBehaviorTreeComponent& OwnerComp,
 		HouseReselectTimer = 0.f;
 
 		AActor* CurrentHouseTarget = Cast<AActor>(BB->GetValueAsObject(BBK_TargetHouse));
-		// Don't interrupt an existing house navigation unless re-scoring finds something clearly better
+
+		// dont interrupt current house visit unless we find a significantly better option, to avoid erratic behavior
 		const float CurrentHouseScore = CurrentHouseTarget
 		    ? [&]() -> float {
 		          for (const FHouseMemory& H : Perceptor->GetKnownHousesConst())

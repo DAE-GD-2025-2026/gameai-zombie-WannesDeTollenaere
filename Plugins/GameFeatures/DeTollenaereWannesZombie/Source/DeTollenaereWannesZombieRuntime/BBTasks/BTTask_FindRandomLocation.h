@@ -17,5 +17,9 @@ protected:
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AI")
-	float SearchRadius = 1500.0f; 
+	float SearchRadius = 1500.0f;
+
+private:
+	bool bHasSavedOrigin = false;
+	FVector SavedOrigin = FVector::ZeroVector;
 };

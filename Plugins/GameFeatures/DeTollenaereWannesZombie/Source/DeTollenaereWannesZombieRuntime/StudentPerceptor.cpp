@@ -11,10 +11,8 @@
 #include "Common/InventoryComponent.h"
 #include "Common/HealthComponent.h"
 #include "Common/StaminaComponent.h"
+#include "SurvivorBlackboardKeys.h"
 
-static const FName BBK_HasZombieInSight("HasZombieInSight");
-static const FName BBK_ClosestZombie   ("ClosestZombie");
-static const FName BBK_TargetItem      ("TargetItem");
 
 
 bool FHouseMemory::IsValidHouse() const
@@ -126,22 +124,46 @@ void UStudentPerceptor::MarkHouseScouted(AActor* HouseActor)
 }
 
 
-void UStudentPerceptor::TickComponent(float DeltaTime, ELevelTick TickType,
-                                      FActorComponentTickFunction* ThisTickFunction)
+void UStudentPerceptor::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	UBlackboardComponent* BB = GetBlackboard();
-	if (!BB || !BB->GetValueAsBool(BBK_HasZombieInSight)) return;
+	if (!BB) return;
 
-	AActor* Zombie = Cast<AActor>(BB->GetValueAsObject(BBK_ClosestZombie));
-	if (!Zombie) return;
+	UAIPerceptionComponent* Perc = GetOwner()->GetComponentByClass<UAIPerceptionComponent>();
+	if (!Perc) return;
 
-	if (FVector::Dist(GetOwner()->GetActorLocation(), Zombie->GetActorLocation()) > SafetyDistance)
+	TArray<AActor*> KnownActors;
+	Perc->GetKnownPerceivedActors(UAISense_Sight::StaticClass(), KnownActors);
+
+	AActor* ClosestZombie = nullptr;
+	float MinDistance = SafetyDistance;
+
+	// find closest zombie
+	for (AActor* Actor : KnownActors)
+	{
+		if (ABaseZombie* Zombie = Cast<ABaseZombie>(Actor))
+		{
+			float Dist = FVector::Dist(GetOwner()->GetActorLocation(), Zombie->GetActorLocation());
+			if (Dist < MinDistance)
+			{
+				MinDistance = Dist;
+				ClosestZombie = Zombie;
+			}
+		}
+	}
+
+	// Update the Blackboard based on real-time proximity
+	if (ClosestZombie)
+	{
+		BB->SetValueAsBool(BBK_HasZombieInSight, true);
+		BB->SetValueAsObject(BBK_ClosestZombie, ClosestZombie);
+	}
+	else
 	{
 		BB->SetValueAsBool(BBK_HasZombieInSight, false);
 		BB->ClearValue(BBK_ClosestZombie);
-		GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, TEXT("Reached safe distance."));
 	}
 }
 
@@ -154,20 +176,11 @@ void UStudentPerceptor::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 	if (!BB) return;
 
 	// zombie
+	// zombie
 	if (ABaseZombie* Zombie = Cast<ABaseZombie>(Actor))
 	{
-		if (!Stimulus.WasSuccessfullySensed()) return;
-
-		AActor*     Current = Cast<AActor>(BB->GetValueAsObject(BBK_ClosestZombie));
-		const float NewDist = FVector::Dist(GetOwner()->GetActorLocation(), Zombie->GetActorLocation());
-		const float CurDist = Current
-		                    ? FVector::Dist(GetOwner()->GetActorLocation(), Current->GetActorLocation())
-		                    : FLT_MAX;
-
-		if (NewDist < CurDist)
+		if (Stimulus.WasSuccessfullySensed())
 		{
-			BB->SetValueAsBool  (BBK_HasZombieInSight, true);
-			BB->SetValueAsObject(BBK_ClosestZombie, Zombie);
 			GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Red, TEXT("Zombie spotted!"));
 		}
 		return;
@@ -176,58 +189,31 @@ void UStudentPerceptor::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 	//  Item
 	if (ABaseItem* Item = Cast<ABaseItem>(Actor))
 	{
-		if (!Stimulus.WasSuccessfullySensed()) return;
-		if (Item->GetItemType() == EItemType::Garbage) return;
-
-		APawn* OwnerPawn = Cast<APawn>(GetOwner());
-		if (!OwnerPawn) return;
-
-		KnownItems.AddUnique(Item);
-
-
-		if (FHouseMemory* NearHouse = FindNearestHouseMemory(Item->GetActorLocation(), ItemToHouseRadius))
-			NearHouse->KnownItems.AddUnique(Item);
-
-		UInventoryComponent* Inv = OwnerPawn->FindComponentByClass<UInventoryComponent>();
-		bool bHasSlot   = false;
-		bool bHasWeapon = false;
-		if (Inv)
+		if (!Stimulus.WasSuccessfullySensed() || Item->GetItemType() == EItemType::Garbage)
 		{
-			for (ABaseItem* Slot : Inv->GetInventory())
-			{
-				if (!Slot) bHasSlot = true;
-				else if (AWeapon* W = Cast<AWeapon>(Slot))
-					if (W->GetValue() > 0) bHasWeapon = true;
-			}
+			return;
 		}
-		if (!bHasSlot) return; // inventory full
 
-		const bool bIsWeapon = (Item->GetItemType() == EItemType::Pistol ||
-		                        Item->GetItemType() == EItemType::Shotgun);
+		// Grab the current target item from the blackboard
+		AActor* CurrentTargetItem = BB ? Cast<AActor>(BB->GetValueAsObject(BBK_TargetItem)) : nullptr;
 
-	
-		if (bIsWeapon && !bHasWeapon && BB->GetValueAsBool(BBK_HasZombieInSight))
+		// Switch to new item if no item
+		if (!CurrentTargetItem)
 		{
-			const float Dist = FVector::Dist2D(GetOwner()->GetActorLocation(), Item->GetActorLocation());
-			if (Dist < WeaponGrabRadius)
+			BB->SetValueAsObject(BBK_TargetItem, Item);
+			GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, TEXT("New item spotted! Heading over instantly."));
+		}
+		else
+		{
+			float DistToNewItem = FVector::Dist2D(GetOwner()->GetActorLocation(), Item->GetActorLocation());
+			float DistToCurrentTarget = FVector::Dist2D(GetOwner()->GetActorLocation(), CurrentTargetItem->GetActorLocation());
+
+			if (DistToNewItem < DistToCurrentTarget)
 			{
 				BB->SetValueAsObject(BBK_TargetItem, Item);
-				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green,
-					FString::Printf(TEXT("Grabbing weapon: %s"), *Item->GetName()));
-				return;
+				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Green, TEXT("Spotted a closer item! Diverting course."));
 			}
 		}
-
-		// Normal priority scoring
-		const float NewScore = ScoreItem(Item, OwnerPawn);
-		if (NewScore <= 0.f) return;
-
-		ABaseItem* Current = Cast<ABaseItem>(BB->GetValueAsObject(BBK_TargetItem));
-		if (Current && IsValid(Current) && NewScore <= ScoreItem(Current, OwnerPawn)) return;
-
-		BB->SetValueAsObject(BBK_TargetItem, Item);
-		GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow,
-			FString::Printf(TEXT("Item targeted (%.0f): %s"), NewScore, *Item->GetName()));
 		return;
 	}
 
@@ -244,12 +230,17 @@ void UStudentPerceptor::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 		{
 			FHouseMemory NewEntry;
 			NewEntry.HouseActor = House;
-			NewEntry.bScouted   = false;
+			NewEntry.bScouted = false;
 			KnownHouses.Add(NewEntry);
 
 			GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Cyan,
 				FString::Printf(TEXT("New house discovered (%d total)"), KnownHouses.Num()));
-		}
 
+			if (BB)
+			{
+				BB->SetValueAsObject(BBK_TargetHouse, House);
+				GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Yellow, TEXT("Heading to new house!"));
+			}
+		}
 	}
 }

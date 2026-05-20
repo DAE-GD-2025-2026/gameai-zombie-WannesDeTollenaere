@@ -12,6 +12,7 @@ UBTTask_GrabItem::UBTTask_GrabItem()
 EBTNodeResult::Type UBTTask_GrabItem::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
 	AAIController* AIController = OwnerComp.GetAIOwner();
+	UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
 	if (!AIController) return EBTNodeResult::Failed;
 
 	APawn* AIPawn = AIController->GetPawn();
@@ -19,6 +20,14 @@ EBTNodeResult::Type UBTTask_GrabItem::ExecuteTask(UBehaviorTreeComponent& OwnerC
 
 	UInventoryComponent* Inventory = AIPawn->FindComponentByClass<UInventoryComponent>();
 	if (!Inventory) return EBTNodeResult::Failed;
+
+	if (Inventory->GetInventory().Num() >= Inventory->GetInventoryCapacity())
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Red, TEXT("Inventory is full! Giving up on item."));
+
+		Blackboard->ClearValue(GetSelectedBlackboardKey());
+		return EBTNodeResult::Failed;
+	}
 
 	UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
 	if (!Blackboard) return EBTNodeResult::Failed;

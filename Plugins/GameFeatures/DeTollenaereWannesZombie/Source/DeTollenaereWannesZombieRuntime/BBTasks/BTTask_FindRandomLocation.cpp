@@ -19,10 +19,15 @@ EBTNodeResult::Type UBTTask_FindRandomLocation::ExecuteTask(UBehaviorTreeCompone
 	UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(GetWorld());
 	if (!NavSys) return EBTNodeResult::Failed;
 
-	FNavLocation RandomLocation;
-	FVector Origin = AIPawn->GetActorLocation();
+	if (!bHasSavedOrigin)
+	{
+		SavedOrigin = AIPawn->GetActorLocation();
+		bHasSavedOrigin = true;
+	}
 
-	if (NavSys->GetRandomReachablePointInRadius(Origin, SearchRadius, RandomLocation))
+	FNavLocation RandomLocation;
+
+	if (NavSys->GetRandomReachablePointInRadius(SavedOrigin, SearchRadius, RandomLocation))
 	{
 		OwnerComp.GetBlackboardComponent()->SetValueAsVector(GetSelectedBlackboardKey(), RandomLocation.Location);
 		return EBTNodeResult::Succeeded;
