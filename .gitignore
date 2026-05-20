@@ -803,3 +803,4 @@ FodyWeavers.xsd
 /.diversion
 
 .clignore
+/.claude

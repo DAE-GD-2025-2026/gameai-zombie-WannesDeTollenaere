@@ -4,24 +4,27 @@
 #include "Common/InventoryComponent.h"
 #include "Common/HealthComponent.h"
 #include "Common/StaminaComponent.h"
+#include "Items/BaseItem.h"
 #include "Items/Medkit.h"
 #include "Items/Food.h"
+#include "Items/Weapon.h"
 #include "Survivor/SurvivorPawn.h"
 
 UBTService_ManageSurvival::UBTService_ManageSurvival()
 {
 	NodeName = "Manage Survival Stats";
-	bNotifyTick = true; 
+	bNotifyTick = true;
 }
 
-void UBTService_ManageSurvival::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
+void UBTService_ManageSurvival::TickNode(UBehaviorTreeComponent& OwnerComp,
+                                         uint8* NodeMemory, float DeltaSeconds)
 {
 	Super::TickNode(OwnerComp, NodeMemory, DeltaSeconds);
 
-	AAIController* AIController = OwnerComp.GetAIOwner();
-	if (!AIController) return;
+	AAIController* AIC = OwnerComp.GetAIOwner();
+	if (!AIC) return;
 
-	APawn* AIPawn = AIController->GetPawn();
+	APawn* AIPawn = AIC->GetPawn();
 	if (!AIPawn) return;
 
 	UInventoryComponent* Inventory = AIPawn->FindComponentByClass<UInventoryComponent>();
@@ -30,29 +33,36 @@ void UBTService_ManageSurvival::TickNode(UBehaviorTreeComponent& OwnerComp, uint
 
 	if (!Inventory || !HealthComp || !StaminaComp) return;
 
-	const TArray<ABaseItem*>& Items = Inventory->GetInventory();
+	UBlackboardComponent* BB = OwnerComp.GetBlackboardComponent();
 
+	const TArray<ABaseItem*>& Items = Inventory->GetInventory();
 	const float HealthPct = static_cast<float>(HealthComp->GetHealth()) / HealthComp->GetMaxHealth();
-	if (HealthPct <= HealthThreshold)
+	const float StaminaPct = StaminaComp->GetCurrentStamina() / StaminaComp->GetMaxStamina();
+	const bool  bChased = BB && BB->GetValueAsBool(FName("HasZombieInSight"));
+
+	if (BB)
+		BB->SetValueAsBool(FName("HasCriticalHealth"), HealthPct < CriticalHealthThreshold);
+
+	const bool bEmergencyHeal = bChased && (HealthPct < HealthThreshold * 0.6f);
+	if (HealthPct <= HealthThreshold || bEmergencyHeal)
 	{
-		for (int i = 0; i < Items.Num(); ++i)
+		for (int32 i = 0; i < Items.Num(); ++i)
 		{
-			if (Cast<AMedkit>(Items[i]))
+			if (Cast<AMedkit>(Items[i]) && Inventory->UseItem(i))
 			{
-				Inventory->UseItem(i);
+				Inventory->RemoveItem(i);
 				return;
 			}
 		}
 	}
 
-	const float StaminaPct = StaminaComp->GetCurrentStamina() / StaminaComp->GetMaxStamina();
 	if (StaminaPct <= StaminaThreshold)
 	{
-		for (int i = 0; i < Items.Num(); ++i)
+		for (int32 i = 0; i < Items.Num(); ++i)
 		{
-			if (Cast<AFood>(Items[i]))
+			if (Cast<AFood>(Items[i]) && Inventory->UseItem(i))
 			{
-				Inventory->UseItem(i);
+				Inventory->RemoveItem(i);
 				return;
 			}
 		}
@@ -60,22 +70,17 @@ void UBTService_ManageSurvival::TickNode(UBehaviorTreeComponent& OwnerComp, uint
 
 	if (ASurvivorPawn* Survivor = Cast<ASurvivorPawn>(AIPawn))
 	{
-		UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
-		const bool bZombieInSight = Blackboard && Blackboard->GetValueAsBool(FName("HasZombieInSight"));
-
-		if (bZombieInSight)
+		if (bChased)
 		{
-			if (!Survivor->IsRunning())
+			if (!Survivor->IsRunning() && StaminaPct > 0.05f)
 				Survivor->StartRunning();
+			else if (Survivor->IsRunning() && StaminaPct <= 0.05f)
+				Survivor->StopRunning();
 		}
-		else if (Survivor->IsRunning() && StaminaPct <= WalkStaminaThreshold)
+		else
 		{
-			// no threat
-			Survivor->StopRunning();
-		}
-		else if (!Survivor->IsRunning() && StaminaPct >= WalkStaminaThreshold + 0.15f)
-		{
-			Survivor->StartRunning();
+			if (Survivor->IsRunning())
+				Survivor->StopRunning();
 		}
 	}
 }

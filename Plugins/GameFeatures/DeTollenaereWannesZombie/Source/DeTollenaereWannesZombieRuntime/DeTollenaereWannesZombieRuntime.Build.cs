@@ -17,7 +17,7 @@ public class DeTollenaereWannesZombieRuntime : ModuleRules
 		
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				// ... add other private include paths required here ...
+				ModuleDirectory
 			}
 			);
 			
